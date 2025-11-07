@@ -1,140 +1,254 @@
+import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/ui_settings.dart';
+import 'package:palette_generator/palette_generator.dart';
 
-class PlayerPanel extends StatelessWidget {
+class PlayerPanel extends StatefulWidget {
   const PlayerPanel({super.key});
 
-  String _format(Duration d) {
-    final m = d.inMinutes.remainder(60).toString().padLeft(1, '0');
-    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return '$m:$s';
+  @override
+  State<PlayerPanel> createState() => _PlayerPanelState();
+}
+
+class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin {
+  Color _dominantColor = const Color(0xFF7B5CFF);
+  late AnimationController _waveController;
+  late AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _waveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+      lowerBound: 0.8,
+      upperBound: 1.0,
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _waveController.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _extractDominantColor(ImageProvider imageProvider) async {
+    final palette = await PaletteGenerator.fromImageProvider(imageProvider);
+    if (palette.dominantColor != null) {
+      setState(() {
+        _dominantColor = palette.dominantColor!.color;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final audio = context.watch<AudioService>();
     final ui = context.watch<UiSettings>();
-
-    final currentTitle = audio.currentTitle;
-    final isPlaying = audio.isPlaying;
+    final accent = ui.accentColor;
+    final glow = ui.glowEffects;
+    final title = audio.currentTitle ?? 'No song';
     final pos = audio.position;
-    final dur = audio.duration.inSeconds == 0 ? const Duration(seconds: 1) : audio.duration;
-    final progress = pos.inMilliseconds / dur.inMilliseconds;
-    final glow = ui.glowEffects && isPlaying;
+    final dur = audio.duration;
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 320),
-      decoration: BoxDecoration(
-        color: const Color(0xFF101218),
-        border: const Border(
-          right: BorderSide(
-            color: Color(0xFF101218), // gizli çizgi
-            width: 1,
+    final progress = dur.inMilliseconds == 0
+        ? 0.0
+        : pos.inMilliseconds / dur.inMilliseconds;
+
+    return GestureDetector(
+      onDoubleTapDown: (details) {
+        final w = MediaQuery.of(context).size.width;
+        if (details.localPosition.dx < w / 2) {
+          audio.previous();
+        } else {
+          audio.next();
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeOutCubic,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Colors.black,
+              _dominantColor.withOpacity(0.2),
+              Colors.black,
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
+          boxShadow: glow
+              ? [
+                  BoxShadow(
+                    color: accent.withOpacity(0.35),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  )
+                ]
+              : [],
         ),
-        boxShadow: glow
-            ? [
-                BoxShadow(
-                  color: const Color(0xFF7B5CFF).withOpacity(0.25),
-                  blurRadius: 30,
-                  spreadRadius: 3,
-                  offset: const Offset(0, 8),
-                ),
-              ]
-            : [],
-      ),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 520),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // artwork
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 280),
-                width: isPlaying ? 230 : 210,
-                height: isPlaying ? 230 : 210,
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // cover art + glow
+            ScaleTransition(
+              scale: _pulseController,
+              child: Container(
+                width: 160,
+                height: 160,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF7B5CFF), Color(0xFF191B22)],
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(
+                    colors: [
+                      accent.withOpacity(0.6),
+                      accent.withOpacity(0.1),
+                    ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black54,
-                      blurRadius: 18,
-                      offset: Offset(0, 10),
-                    )
-                  ],
+                  boxShadow: glow
+                      ? [
+                          BoxShadow(
+                            color: accent.withOpacity(0.4),
+                            blurRadius: 25,
+                            spreadRadius: 1,
+                          )
+                        ]
+                      : [],
                 ),
-                child: const Icon(Icons.music_note, size: 70),
+                child: ClipOval(
+                  child: Image.asset(
+                    'assets/cover_placeholder.jpg',
+                    fit: BoxFit.cover,
+                  ),
+                ),
               ),
-              const SizedBox(height: 20),
-              Text(
-                currentTitle ?? 'Henüz bağlı değil',
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
-              const SizedBox(height: 4),
-              Text(
-                currentTitle == null
-                    ? 'Select a track from the left'
-                    : isPlaying
-                        ? 'Playing from Library'
-                        : 'Paused',
-                style: const TextStyle(color: Colors.white54),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              audio.isPlaying ? 'Playing...' : 'Paused',
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+            const SizedBox(height: 16),
+            // waveform visualizer
+            SizedBox(
+              height: 40,
+              child: AnimatedBuilder(
+                animation: _waveController,
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _WavePainter(
+                      _waveController.value,
+                      accent,
+                    ),
+                    child: Container(),
+                  );
+                },
               ),
-              const SizedBox(height: 18),
-
-              // progress
-              Slider(
-                value: progress.clamp(0.0, 1.0),
-                onChanged: (_) {},
-              ),
-              const SizedBox(height: 4),
-              Row(
+            ),
+            const SizedBox(height: 8),
+            // position slider
+            Slider(
+              value: progress.clamp(0.0, 1.0),
+              onChanged: (val) => audio.seekToFraction(val),
+              activeColor: accent,
+              inactiveColor: Colors.white12,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    _format(pos),
-                    style: const TextStyle(fontSize: 12, color: Colors.white38),
-                  ),
-                  Text(
-                    _format(dur),
-                    style: const TextStyle(fontSize: 12, color: Colors.white38),
-                  ),
+                  Text(_format(pos), style: const TextStyle(fontSize: 12)),
+                  Text(_format(dur), style: const TextStyle(fontSize: 12)),
                 ],
               ),
-              const SizedBox(height: 12),
-
-              // controls
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  IconButton(onPressed: () {}, icon: const Icon(Icons.skip_previous, size: 26)),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: () {
-                      context.read<AudioService>().togglePlayPause();
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF7B5CFF),
-                      shape: const CircleBorder(),
-                      padding: const EdgeInsets.all(16),
+            ),
+            const SizedBox(height: 16),
+            // controls
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.skip_previous_rounded, size: 32),
+                  onPressed: audio.previous,
+                ),
+                const SizedBox(width: 16),
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+                  child: IconButton(
+                    key: ValueKey(audio.isPlaying),
+                    icon: Icon(
+                      audio.isPlaying ? Icons.pause_circle : Icons.play_circle,
+                      size: 56,
+                      color: accent,
                     ),
-                    child: Icon(isPlaying ? Icons.pause : Icons.play_arrow, size: 28),
+                    onPressed: audio.togglePlayPause,
                   ),
-                  const SizedBox(width: 12),
-                  IconButton(onPressed: () {}, icon: const Icon(Icons.skip_next, size: 26)),
-                ],
-              )
-            ],
-          ),
+                ),
+                const SizedBox(width: 16),
+                IconButton(
+                  icon: const Icon(Icons.skip_next_rounded, size: 32),
+                  onPressed: audio.next,
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );
   }
+
+  String _format(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+}
+
+class _WavePainter extends CustomPainter {
+  final double value;
+  final Color color;
+  final int bars = 32;
+
+  _WavePainter(this.value, this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withOpacity(0.7)
+      ..strokeCap = StrokeCap.round
+      ..strokeWidth = 3;
+
+    final rand = Random(value.hashCode);
+    final barWidth = size.width / bars;
+    for (int i = 0; i < bars; i++) {
+      final x = i * barWidth;
+      final h = (sin(value * 2 * pi + i) + 1) * 0.4 + rand.nextDouble() * 0.3;
+      final y = size.height * (1 - h);
+      canvas.drawLine(Offset(x, size.height), Offset(x, y), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _WavePainter oldDelegate) => true;
 }
