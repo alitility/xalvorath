@@ -49,7 +49,8 @@ class AppTheme {
           elevation: 6,
         ),
       ),
-      cardTheme: CardTheme(
+      // burada artık CardThemeData kullanıyoruz
+      cardTheme: CardThemeData(
         color: surface,
         shadowColor: glow.withOpacity(0.3),
         margin: const EdgeInsets.all(8),
@@ -81,13 +82,6 @@ class AppTheme {
         elevation: 0,
         centerTitle: true,
       ),
-      cardTheme: CardTheme(
-        color: surface,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-        ),
-        shadowColor: accent.withOpacity(0.4),
-      ),
       sliderTheme: SliderThemeData(
         thumbColor: accent,
         activeTrackColor: accent,
@@ -95,6 +89,15 @@ class AppTheme {
       ),
       iconTheme: const IconThemeData(
         color: accent,
+      ),
+      // demon modda da aynı şekilde
+      cardTheme: CardThemeData(
+        color: surface,
+        shadowColor: accent.withOpacity(0.25),
+        margin: const EdgeInsets.all(8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
       ),
     );
   }

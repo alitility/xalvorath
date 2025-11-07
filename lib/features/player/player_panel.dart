@@ -1,10 +1,8 @@
-import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/services/audio_service.dart';
 import '../../core/services/ui_settings.dart';
-import 'package:palette_generator/palette_generator.dart';
 
 class PlayerPanel extends StatefulWidget {
   const PlayerPanel({super.key});
@@ -14,7 +12,6 @@ class PlayerPanel extends StatefulWidget {
 }
 
 class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin {
-  Color _dominantColor = const Color(0xFF7B5CFF);
   late AnimationController _waveController;
   late AnimationController _pulseController;
 
@@ -25,6 +22,7 @@ class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin
       vsync: this,
       duration: const Duration(milliseconds: 1200),
     )..repeat();
+
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1800),
@@ -40,47 +38,35 @@ class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin
     super.dispose();
   }
 
-  Future<void> _extractDominantColor(ImageProvider imageProvider) async {
-    final palette = await PaletteGenerator.fromImageProvider(imageProvider);
-    if (palette.dominantColor != null) {
-      setState(() {
-        _dominantColor = palette.dominantColor!.color;
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final audio = context.watch<AudioService>();
     final ui = context.watch<UiSettings>();
     final accent = ui.accentColor;
     final glow = ui.glowEffects;
+
     final title = audio.currentTitle ?? 'No song';
     final pos = audio.position;
     final dur = audio.duration;
+
+    // eğer şarkı yoksa (süre 0) bu panel tıklamayı geçirsin
+    final bool shouldPassClicks = dur.inMilliseconds == 0;
 
     final progress = dur.inMilliseconds == 0
         ? 0.0
         : pos.inMilliseconds / dur.inMilliseconds;
 
-    return GestureDetector(
-      onDoubleTapDown: (details) {
-        final w = MediaQuery.of(context).size.width;
-        if (details.localPosition.dx < w / 2) {
-          audio.previous();
-        } else {
-          audio.next();
-        }
-      },
+    return IgnorePointer(
+      ignoring: shouldPassClicks,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 400),
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           gradient: LinearGradient(
             colors: [
-              Colors.black,
-              _dominantColor.withOpacity(0.2),
-              Colors.black,
+              const Color(0xFF08090C),
+              accent.withOpacity(0.15),
+              const Color(0xFF08090C),
             ],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
@@ -97,38 +83,51 @@ class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin
         ),
         padding: const EdgeInsets.all(20),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // cover art + glow
-            ScaleTransition(
-              scale: _pulseController,
-              child: Container(
-                width: 160,
-                height: 160,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  gradient: LinearGradient(
-                    colors: [
-                      accent.withOpacity(0.6),
-                      accent.withOpacity(0.1),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+            // SADECE kapak kısmı çift tık yakalıyor
+            GestureDetector(
+              onDoubleTapDown: (details) {
+                const w = 160.0;
+                if (details.localPosition.dx < w / 2) {
+                  audio.previous();
+                } else {
+                  audio.next();
+                }
+              },
+              child: ScaleTransition(
+                scale: _pulseController,
+                child: Container(
+                  width: 160,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        accent.withOpacity(0.6),
+                        accent.withOpacity(0.1),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    boxShadow: glow
+                        ? [
+                            BoxShadow(
+                              color: accent.withOpacity(0.4),
+                              blurRadius: 25,
+                              spreadRadius: 1,
+                            )
+                          ]
+                        : [],
                   ),
-                  boxShadow: glow
-                      ? [
-                          BoxShadow(
-                            color: accent.withOpacity(0.4),
-                            blurRadius: 25,
-                            spreadRadius: 1,
-                          )
-                        ]
-                      : [],
-                ),
-                child: ClipOval(
-                  child: Image.asset(
-                    'assets/cover_placeholder.jpg',
-                    fit: BoxFit.cover,
+                  child: const CircleAvatar(
+                    backgroundColor: Colors.black12,
+                    child: Icon(
+                      Icons.music_note,
+                      size: 56,
+                      color: Colors.white70,
+                    ),
                   ),
                 ),
               ),
@@ -144,11 +143,12 @@ class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin
             ),
             const SizedBox(height: 8),
             Text(
-              audio.isPlaying ? 'Playing...' : 'Paused',
+              audio.isPlaying ? 'Playing…' : 'Paused',
               style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
             const SizedBox(height: 16),
-            // waveform visualizer
+
+            // waveform
             SizedBox(
               height: 40,
               child: AnimatedBuilder(
@@ -159,13 +159,13 @@ class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin
                       _waveController.value,
                       accent,
                     ),
-                    child: Container(),
                   );
                 },
               ),
             ),
             const SizedBox(height: 8),
-            // position slider
+
+            // slider
             Slider(
               value: progress.clamp(0.0, 1.0),
               onChanged: (val) => audio.seekToFraction(val),
@@ -183,6 +183,7 @@ class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin
               ),
             ),
             const SizedBox(height: 16),
+
             // controls
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -194,11 +195,14 @@ class _PlayerPanelState extends State<PlayerPanel> with TickerProviderStateMixin
                 const SizedBox(width: 16),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 300),
-                  transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+                  transitionBuilder: (child, anim) =>
+                      ScaleTransition(scale: anim, child: child),
                   child: IconButton(
                     key: ValueKey(audio.isPlaying),
                     icon: Icon(
-                      audio.isPlaying ? Icons.pause_circle : Icons.play_circle,
+                      audio.isPlaying
+                          ? Icons.pause_circle
+                          : Icons.play_circle,
                       size: 56,
                       color: accent,
                     ),
@@ -241,6 +245,7 @@ class _WavePainter extends CustomPainter {
 
     final rand = Random(value.hashCode);
     final barWidth = size.width / bars;
+
     for (int i = 0; i < bars; i++) {
       final x = i * barWidth;
       final h = (sin(value * 2 * pi + i) + 1) * 0.4 + rand.nextDouble() * 0.3;

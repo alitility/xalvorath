@@ -7,12 +7,24 @@ environment:
   sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
-  file_picker: ^10.3.3
   flutter:
     sdk: flutter
+
+  # state
+  provider: ^6.1.2
+
+  # audio
   just_audio: ^0.10.5
   just_audio_windows: ^0.2.2
-  provider: ^6.1.2
+
+  # file pick / folder scan
+  file_picker: ^10.3.3
+
+  # network for lyrics / track info
+  http: ^1.2.2
+
+  # dynamic accent from images (şimdilik devre dışı, ama ileride lazım olursa)
+  palette_generator: ^0.3.3+7
 
 dev_dependencies:
   flutter_test:
@@ -20,4 +32,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-
+  # assets:
+  #   - assets/cover_placeholder.jpg

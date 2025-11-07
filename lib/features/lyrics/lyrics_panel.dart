@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:http/http.dart' as http;
+
 import '../../core/services/audio_service.dart';
 import '../../core/services/ui_settings.dart';
 
@@ -14,10 +17,39 @@ class LyricsPanel extends StatefulWidget {
 class _LyricsPanelState extends State<LyricsPanel> {
   int _activeTab = 0; // 0: lyrics, 1: info, 2: queue
 
+  String? _lastTrackKey;
+
+  bool _lyricsLoading = false;
+  String? _lyricsText;
+  String? _lyricsError;
+
+  bool _infoLoading = false;
+  Map<String, dynamic>? _trackInfo;
+  String? _infoError;
+
+  final _lyricsScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _lyricsScroll.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final audio = context.watch<AudioService>();
     final ui = context.watch<UiSettings>();
+
+    final currentTitle = audio.currentTitle;
+    final currentKey = currentTitle ?? '—';
+    if (currentTitle != null && currentKey != _lastTrackKey) {
+      _lastTrackKey = currentKey;
+      if (_activeTab == 0) {
+        _fetchLyricsFor(currentTitle);
+      } else if (_activeTab == 1) {
+        _fetchInfoFor(currentTitle);
+      }
+    }
 
     return Container(
       decoration: const BoxDecoration(
@@ -87,6 +119,15 @@ class _LyricsPanelState extends State<LyricsPanel> {
         setState(() {
           _activeTab = index;
         });
+        final audio = context.read<AudioService>();
+        final title = audio.currentTitle;
+        if (title != null) {
+          if (index == 0 && _lyricsText == null && !_lyricsLoading) {
+            _fetchLyricsFor(title);
+          } else if (index == 1 && _trackInfo == null && !_infoLoading) {
+            _fetchInfoFor(title);
+          }
+        }
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
@@ -125,53 +166,133 @@ class _LyricsPanelState extends State<LyricsPanel> {
     }
   }
 
+  // -------------------------------------------------
+  // LYRICS VIEW (animated, timed)
+  // -------------------------------------------------
   Widget _lyricsView(AudioService audio) {
+    if (_lyricsLoading) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (_lyricsError != null) {
+      return Center(
+        child: Text(
+          _lyricsError!,
+          style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+        ),
+      );
+    }
+    if (_lyricsText == null) {
+      return const Center(
+        child: Text(
+          'No lyrics available for this track.',
+          style: TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+      );
+    }
+
+    final ui = context.watch<UiSettings>();
+    final lines = _lyricsText!.split('\n').where((l) => l.trim().isNotEmpty).toList();
+    final dur = audio.duration;
+    final pos = audio.position;
+
+    // tahmini zamanlama: her satır eşit süre
+    // örn: 180 sn / 30 satır = 6 sn/satır
+    final totalMs = dur.inMilliseconds == 0 ? 1 : dur.inMilliseconds;
+    final perLine = (totalMs / (lines.isEmpty ? 1 : lines.length)).floor();
+
+    // şu an hangi satır çalıyor?
+    final currentLine = (pos.inMilliseconds / perLine).floor().clamp(0, (lines.length - 1).clamp(0, 99999));
+
+    // aktif satıra otomatik kaydır
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_lyricsScroll.hasClients) {
+        final target = currentLine * 34.0; // her satırın yaklaşık yüksekliği
+        _lyricsScroll.animateTo(
+          target,
+          duration: const Duration(milliseconds: 280),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    });
+
     return Padding(
       key: const ValueKey('lyrics'),
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      child: SingleChildScrollView(
-        child: Text(
-          audio.currentTitle != null
-              ? "🎵 ${audio.currentTitle}\n\nŞarkı sözleri burada gösterilecek. "
-                "Şu anda gerçek dosyadan çaldığımız için buraya ileride LRC / txt parser bağlayacağız.\n\n"
-                "Lorem ipsum dolor sit amet, consectetur adipiscing elit. "
-                "Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.\n"
-                "Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat."
-              : "Henüz bir şarkı seçilmedi.",
-          style: const TextStyle(
-            fontSize: 13,
-            height: 1.35,
-            color: Colors.white70,
-          ),
-        ),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+      child: ListView.builder(
+        controller: _lyricsScroll,
+        itemCount: lines.length,
+        itemBuilder: (context, index) {
+          final isActive = index == currentLine;
+final bool isDemon = (ui as dynamic).demonMode == true;
+final baseColor = isDemon ? const Color(0xFFFF6B6B) : ui.accentColor;
+          return AnimatedOpacity(
+            duration: const Duration(milliseconds: 220),
+            opacity: isActive ? 1.0 : 0.35,
+            child: AnimatedDefaultTextStyle(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOutCubic,
+              style: TextStyle(
+                fontSize: isActive ? 14 : 12,
+                height: 1.35,
+                color: isActive ? Colors.white : Colors.white70,
+                fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                shadows: isActive && ui.glowEffects
+                    ? [
+                        Shadow(
+                          color: baseColor.withOpacity(0.6),
+                          blurRadius: 12,
+                        )
+                      ]
+                    : [],
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
+                child: Text(lines[index]),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 
+  // -------------------------------------------------
+  // INFO VIEW (same as before)
+  // -------------------------------------------------
   Widget _infoView(AudioService audio) {
     return Container(
       key: const ValueKey('info'),
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Track info', style: TextStyle(fontWeight: FontWeight.w600)),
-          const SizedBox(height: 8),
-          _infoRow('Title', audio.currentTitle ?? '—'),
-          _infoRow('Duration', audio.duration == Duration.zero
-              ? '—'
-              : '${audio.duration.inMinutes}:${(audio.duration.inSeconds % 60).toString().padLeft(2, '0')}'),
-          _infoRow('Position', audio.position == Duration.zero
-              ? '—'
-              : '${audio.position.inMinutes}:${(audio.position.inSeconds % 60).toString().padLeft(2, '0')}'),
-          _infoRow('Source', 'Local file (PC)'),
-          const SizedBox(height: 12),
-          const Text(
-            'Bu paneli sonra bitrate, codec, sample rate bilgisiyle dolduracağız.',
-            style: TextStyle(fontSize: 11, color: Colors.white38),
-          ),
-        ],
-      ),
+      child: _infoLoading
+          ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+          : _infoError != null
+              ? Text(
+                  _infoError!,
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                )
+              : _trackInfo != null
+                  ? ListView(
+                      children: [
+                        const Text('Track info',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        const SizedBox(height: 8),
+                        _infoRow('Title', _trackInfo!['trackName'] ?? audio.currentTitle ?? '—'),
+                        _infoRow('Artist', _trackInfo!['artistName'] ?? '—'),
+                        _infoRow('Album', _trackInfo!['collectionName'] ?? '—'),
+                        _infoRow('Genre', _trackInfo!['primaryGenreName'] ?? '—'),
+                        _infoRow('Source', 'Online lookup'),
+                        const SizedBox(height: 12),
+                        if (_trackInfo!['artworkUrl100'] != null)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(_trackInfo!['artworkUrl100']),
+                          ),
+                      ],
+                    )
+                  : const Text(
+                      'No info for this track.',
+                      style: TextStyle(color: Colors.white38, fontSize: 12),
+                    ),
     );
   }
 
@@ -198,6 +319,9 @@ class _LyricsPanelState extends State<LyricsPanel> {
     );
   }
 
+  // -------------------------------------------------
+  // QUEUE VIEW (same as before)
+  // -------------------------------------------------
   Widget _queueView(AudioService audio) {
     return Container(
       key: const ValueKey('queue'),
@@ -230,7 +354,6 @@ class _LyricsPanelState extends State<LyricsPanel> {
                 ),
               ),
               onTap: () {
-                // queue'den de seçilebilir hale getir
                 audio.playFromLibrary(name, f.path, index);
               },
             ),
@@ -238,5 +361,100 @@ class _LyricsPanelState extends State<LyricsPanel> {
         },
       ),
     );
+  }
+
+  // -------------------------------------------------
+  // NETWORK HELPERS
+  // -------------------------------------------------
+  (String? artist, String title) _parseTitle(String raw) {
+    var clean = raw;
+    if (clean.contains('.')) {
+      clean = clean.split('.').first;
+    }
+    if (clean.contains('-')) {
+      final parts = clean.split('-');
+      final artist = parts.first.trim();
+      final title = parts.sublist(1).join('-').trim();
+      return (artist, title);
+    }
+    return (null, clean.trim());
+  }
+
+  Future<void> _fetchLyricsFor(String trackName) async {
+    setState(() {
+      _lyricsLoading = true;
+      _lyricsError = null;
+      _lyricsText = null;
+    });
+
+    final parsed = _parseTitle(trackName);
+    final artist = parsed.$1 ?? 'unknown';
+    final title = parsed.$2;
+
+    try {
+      final uri = Uri.parse('https://api.lyrics.ovh/v1/$artist/$title');
+      final res = await http.get(uri);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        setState(() {
+          _lyricsText = data['lyrics'] as String? ?? 'Lyrics found but empty.';
+          _lyricsLoading = false;
+        });
+      } else {
+        setState(() {
+          _lyricsError = 'Lyrics not found (${res.statusCode}).';
+          _lyricsLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _lyricsError = 'Lyrics fetch error: $e';
+        _lyricsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _fetchInfoFor(String trackName) async {
+    setState(() {
+      _infoLoading = true;
+      _infoError = null;
+      _trackInfo = null;
+    });
+
+    final parsed = _parseTitle(trackName);
+    final artist = parsed.$1;
+    final title = parsed.$2;
+    final q = artist != null ? '$artist $title' : title;
+
+    try {
+      final uri = Uri.parse(
+          'https://itunes.apple.com/search?term=${Uri.encodeQueryComponent(q)}&limit=1');
+      final res = await http.get(uri);
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final results = data['results'] as List<dynamic>;
+        if (results.isNotEmpty) {
+          setState(() {
+            _trackInfo = results.first as Map<String, dynamic>;
+            _infoLoading = false;
+          });
+        } else {
+          setState(() {
+            _infoError = 'No info found.';
+            _infoLoading = false;
+          });
+        }
+      } else {
+        setState(() {
+          _infoError = 'Info not found (${res.statusCode}).';
+          _infoLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _infoError = 'Info fetch error: $e';
+        _infoLoading = false;
+      });
+    }
   }
 }
