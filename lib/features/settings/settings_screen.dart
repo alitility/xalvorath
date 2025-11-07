@@ -10,33 +10,70 @@ class SettingsScreen extends StatelessWidget {
     final ui = context.watch<UiSettings>();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Ayarlar')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+      ),
       body: ListView(
+        padding: const EdgeInsets.all(16),
         children: [
-          const ListTile(
-            title: Text('Görünüm'),
-            subtitle: Text('Xalvorath arayüz tercihleri'),
+          const Text(
+            'Interface',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
           ),
+          const SizedBox(height: 6),
           SwitchListTile(
-            title: const Text('Compact mode'),
-            subtitle: const Text('Panel aralıklarını ve paddingleri küçült'),
+            title: const Text('Compact layout'),
+            subtitle: const Text('Use tighter paddings for small screens'),
             value: ui.compactMode,
-            onChanged: (val) {
-              context.read<UiSettings>().setCompact(val);
-            },
+            onChanged: ui.setCompact,
           ),
           SwitchListTile(
             title: const Text('Glow effects'),
-            subtitle: const Text('Player aktifken parıltı ver'),
+            subtitle: const Text('Panel shadows and accent highlights'),
             value: ui.glowEffects,
-            onChanged: (val) {
-              context.read<UiSettings>().setGlow(val);
-            },
+            onChanged: ui.setGlow,
           ),
-          const Divider(),
+          const SizedBox(height: 12),
+          const Text(
+            'Xalvorath mode',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 6),
+          SwitchListTile(
+            title: const Text('Demon mode'),
+            subtitle: const Text('Use red / hell palette'),
+            value: ui.demonMode,
+            onChanged: ui.setDemonMode,
+          ),
+          SwitchListTile(
+            title: const Text('Idle glow'),
+            subtitle: const Text('Pulse when player is paused'),
+            value: ui.idleGlow,
+            onChanged: ui.setIdleGlow,
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Theme pulse intensity'),
+            subtitle: Slider(
+              value: ui.pulseIntensity,
+              min: 0.2,
+              max: 2.0,
+              onChanged: ui.setPulseIntensity,
+            ),
+            trailing: Text(ui.pulseIntensity.toStringAsFixed(1)),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Keybinds (coming soon)',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          ),
           const ListTile(
-            title: Text('Hakkında'),
-            subtitle: Text('Xalvorath PC skeleton • modular'),
+            title: Text('Play/Pause → Space'),
+            subtitle: Text('Will be configurable'),
+          ),
+          const ListTile(
+            title: Text('Next / Previous → Ctrl + ←/→'),
+            subtitle: Text('Will be configurable'),
           ),
         ],
       ),
