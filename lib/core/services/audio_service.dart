@@ -6,17 +6,14 @@ import 'package:file_picker/file_picker.dart';
 class AudioService extends ChangeNotifier {
   final AudioPlayer _player = AudioPlayer();
 
-  // çalan şarkı bilgileri
   String? _currentTitle;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   bool _isPlaying = false;
 
-  // kütüphane
   List<FileSystemEntity> _libraryFiles = [];
   int _currentIndex = -1;
 
-  // getters
   String? get currentTitle => _currentTitle;
   Duration get position => _position;
   Duration get duration => _duration;
@@ -25,7 +22,6 @@ class AudioService extends ChangeNotifier {
   int get currentIndex => _currentIndex;
 
   AudioService() {
-    // streamleri dinle
     _player.positionStream.listen((p) {
       _position = p;
       notifyListeners();
@@ -46,17 +42,15 @@ class AudioService extends ChangeNotifier {
     try {
       await _player.setVolume(1.0);
     } catch (e) {
-      debugPrint('🔴 Audio init error: $e');
+      debugPrint('Audio init error: $e');
     }
   }
 
-  /// LibraryPanel bizi çağıracak → “bunlar listedeki dosyalar” diye
   void setLibraryFiles(List<FileSystemEntity> files) {
     _libraryFiles = files;
     notifyListeners();
   }
 
-  /// elle dosya seçmek istersek
   Future<void> pickAndPlay() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -66,33 +60,30 @@ class AudioService extends ChangeNotifier {
     final path = result.files.single.path!;
     final name = result.files.single.name;
     await _playFromPath(name, path);
-    _currentIndex = -1; // çünkü bu listedeki değil
+    _currentIndex = -1;
   }
 
-  /// Library’den tıklanınca kullanılan
   Future<void> playFromLibrary(String title, String path, int index) async {
     _currentIndex = index;
     await _playFromPath(title, path);
   }
 
-  /// asıl oynatma burada
   Future<void> _playFromPath(String title, String path) async {
     try {
-      // windows yol düzeltme
-      final fixed = path.replaceAll(r'\', '/');
-      if (!File(fixed).existsSync()) {
-        debugPrint('🚫 Dosya yok: $fixed');
+      final fixedPath = path.replaceAll(r'\', '/');
+      if (!File(fixedPath).existsSync()) {
+        debugPrint('File not found: $fixedPath');
         return;
       }
 
       _currentTitle = title;
-      await _player.setFilePath(fixed);
+      await _player.setFilePath(fixedPath);
       await _player.play();
       _isPlaying = true;
       notifyListeners();
-      debugPrint('🎵 Oynatılıyor: $title');
+      debugPrint('Now playing: $title');
     } catch (e) {
-      debugPrint('❌ Oynatma hatası: $e');
+      debugPrint('Playback error: $e');
     }
   }
 
@@ -107,17 +98,14 @@ class AudioService extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// slider’dan çağrılacak
   Future<void> seekToFraction(double value) async {
     if (_duration == Duration.zero) return;
     final targetMs = (_duration.inMilliseconds * value).toInt();
     await _player.seek(Duration(milliseconds: targetMs));
   }
 
-  /// sonraki
   Future<void> next() async {
-    if (_libraryFiles.isEmpty) return;
-    if (_currentIndex == -1) return;
+    if (_libraryFiles.isEmpty || _currentIndex == -1) return;
     final nextIndex = _currentIndex + 1;
     if (nextIndex >= _libraryFiles.length) return;
     final file = _libraryFiles[nextIndex];
@@ -125,10 +113,8 @@ class AudioService extends ChangeNotifier {
     await playFromLibrary(name, file.path, nextIndex);
   }
 
-  /// önceki
   Future<void> previous() async {
-    if (_libraryFiles.isEmpty) return;
-    if (_currentIndex <= 0) return;
+    if (_libraryFiles.isEmpty || _currentIndex <= 0) return;
     final prevIndex = _currentIndex - 1;
     final file = _libraryFiles[prevIndex];
     final name = file.path.split(Platform.pathSeparator).last;
