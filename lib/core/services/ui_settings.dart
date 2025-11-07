@@ -1,29 +1,28 @@
 import 'package:flutter/material.dart';
 
 class UiSettings extends ChangeNotifier {
-  // 🔹 Görsel ayarlar
+  // Visual appearance
   Color _accentColor = const Color(0xFF7B5CFF);
   bool _glowEffects = true;
 
-  // 🔹 Kullanıcı arayüz tercihleri
+  // UI preferences
   bool _compactMode = false;
   String? _activePlaylist;
   String _libraryQuery = '';
 
-  // === GETTER ===
+  // Getters
   Color get accentColor => _accentColor;
   bool get glowEffects => _glowEffects;
   bool get compactMode => _compactMode;
   String? get activePlaylist => _activePlaylist;
   String get libraryQuery => _libraryQuery;
 
-  // === SETTER ===
+  // Setters
   void setAccent(Color newColor) {
     _accentColor = newColor;
     notifyListeners();
   }
 
-  // settings_screen.dart içinde çağrılan isimler:
   void setGlow(bool value) {
     _glowEffects = value;
     notifyListeners();
